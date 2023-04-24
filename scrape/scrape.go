@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/md5"
 	"fmt"
 	"io"
 	"math"
@@ -47,6 +48,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/cache"
 	"github.com/prometheus/prometheus/util/pool"
 )
 
@@ -995,8 +997,17 @@ func (c *scrapeCache) iterDone(flushCache bool) {
 	}
 }
 
+func scrapeCacheKey(met []byte) string {
+	if len(met) <= 32 {
+		cache.DefautlDictCache.Get(string(met))
+	}
+	h := md5.New()
+	h.Write(met)
+	return cache.DefautlDictCache.Get(string(h.Sum(nil)))
+}
+
 func (c *scrapeCache) get(met []byte) (*cacheEntry, bool) {
-	e, ok := c.series[string(met)]
+	e, ok := c.series[scrapeCacheKey(met)]
 	if !ok {
 		return nil, false
 	}
@@ -1008,16 +1019,16 @@ func (c *scrapeCache) addRef(met []byte, ref storage.SeriesRef, lset labels.Labe
 	if ref == 0 {
 		return
 	}
-	c.series[string(met)] = &cacheEntry{ref: ref, lastIter: c.iter, lset: lset, hash: hash}
+	c.series[scrapeCacheKey(met)] = &cacheEntry{ref: ref, lastIter: c.iter, lset: lset, hash: hash}
 }
 
 func (c *scrapeCache) addDropped(met []byte) {
 	iter := c.iter
-	c.droppedSeries[string(met)] = &iter
+	c.droppedSeries[scrapeCacheKey(met)] = &iter
 }
 
 func (c *scrapeCache) getDropped(met []byte) bool {
-	iterp, ok := c.droppedSeries[string(met)]
+	iterp, ok := c.droppedSeries[scrapeCacheKey(met)]
 	if ok {
 		*iterp = c.iter
 	}
@@ -1644,6 +1655,7 @@ loop:
 				// Bypass staleness logic if there is an explicit timestamp.
 				sl.cache.trackStaleness(hash, lset)
 			}
+			lset.Caching()
 			sl.cache.addRef(met, ref, lset, hash)
 			if sampleAdded && sampleLimitErr == nil {
 				seriesAdded++

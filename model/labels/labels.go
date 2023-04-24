@@ -22,6 +22,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/util/cache"
 	"golang.org/x/exp/slices"
 )
 
@@ -364,6 +365,7 @@ func New(ls ...Label) Labels {
 	set = append(set, ls...)
 	slices.SortFunc(set, func(a, b Label) bool { return a.Name < b.Name })
 
+	set.Caching()
 	return set
 }
 
@@ -387,6 +389,7 @@ func FromStrings(ss ...string) Labels {
 	}
 
 	slices.SortFunc(res, func(a, b Label) bool { return a.Name < b.Name })
+	res.Caching()
 	return res
 }
 
@@ -430,6 +433,13 @@ func (ls Labels) IsEmpty() bool {
 func (ls Labels) Range(f func(l Label)) {
 	for _, l := range ls {
 		f(l)
+	}
+}
+
+func (ls Labels) Caching() {
+	for _, l := range ls {
+		l.Name = cache.DefautlDictCache.Get(l.Name)
+		l.Value = cache.DefautlDictCache.Get(l.Value)
 	}
 }
 
